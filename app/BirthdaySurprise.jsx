@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, ReactNode } from "react";
+import { useState, useEffect, useRef } from "react";
 
 // ─── DESIGN TOKENS ───────────────────────────────────────────────
 const theme = {
@@ -51,6 +51,10 @@ const GlobalStyle = () => (
       0% { transform: translateY(24px); opacity: 0; }
       100% { transform: translateY(0); opacity: 1; }
     }
+    @keyframes shimmer {
+      0% { background-position: -200% center; }
+      100% { background-position: 200% center; }
+    }
     @keyframes bounce-in {
       0% { transform: scale(0); }
       60% { transform: scale(1.15); }
@@ -60,9 +64,28 @@ const GlobalStyle = () => (
     @keyframes blink {
       50% { border-color: transparent; }
     }
+    @keyframes slide-in-left {
+      from { transform: translateX(-40px); opacity: 0; }
+      to { transform: translateX(0); opacity: 1; }
+    }
+    @keyframes slide-in-right {
+      from { transform: translateX(40px); opacity: 0; }
+      to { transform: translateX(0); opacity: 1; }
+    }
+
+    .animate-float { animation: float 3s ease-in-out infinite; }
+    .animate-scale-in { animation: scale-in 0.5s cubic-bezier(0.34,1.56,0.64,1) forwards; }
+    .animate-fade-up { animation: fade-up 0.6s ease forwards; }
+    .animate-bounce-in { animation: bounce-in 0.7s cubic-bezier(0.34,1.56,0.64,1) forwards; }
 
     .gradient-text {
       background: linear-gradient(135deg, ${theme.pink}, ${theme.purple});
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .gradient-text-gold {
+      background: linear-gradient(135deg, ${theme.gold}, #FF9A3C);
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
       background-clip: text;
@@ -87,10 +110,21 @@ const GlobalStyle = () => (
       font-weight: 500;
       cursor: pointer;
       transition: all 0.2s;
+      letter-spacing: 0.3px;
       position: relative;
       overflow: hidden;
     }
+    .btn-primary::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: white;
+      opacity: 0;
+      transition: opacity 0.2s;
+      border-radius: inherit;
+    }
     .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(255,77,141,0.35); }
+    .btn-primary:hover::after { opacity: 0.08; }
     .btn-primary:active { transform: translateY(0); }
 
     .btn-ghost {
@@ -143,6 +177,7 @@ const GlobalStyle = () => (
       z-index: 0;
     }
 
+    /* Responsive fixes */
     @media (max-width: 480px) {
       .btn-primary, .btn-ghost {
         padding: 12px 24px;
@@ -153,35 +188,15 @@ const GlobalStyle = () => (
       }
     }
 
+    /* scrollbar */
     ::-webkit-scrollbar { width: 4px; }
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
   `}</style>
 );
 
-// ─── TYPES ───────────────────────────────────────────────────────
-interface Orb {
-  size?: number | string;
-  color?: string;
-  opacity?: number;
-  top?: string | number;
-  left?: string | number;
-  right?: string | number;
-  bottom?: string | number;
-}
-
-interface ConfettiPiece {
-  id: number;
-  left: string;
-  delay: string;
-  dur: string;
-  color: string;
-  size: number;
-  shape: string;
-}
-
 // ─── ORB BACKGROUND ───────────────────────────────────────────────
-const OrbBg = ({ orbs = [] }: { orbs?: Orb[] }) => (
+const OrbBg = ({ orbs = [] }) => (
   <>
     {orbs.map((o, i) => (
       <div key={i} className="orb" style={{
@@ -200,10 +215,11 @@ const OrbBg = ({ orbs = [] }: { orbs?: Orb[] }) => (
 
 // ─── CONFETTI ─────────────────────────────────────────────────────
 const Confetti = () => {
-  const [pieces, setPieces] = useState<ConfettiPiece[]>([]);
+  const [pieces, setPieces] = useState([]);
   
   useEffect(() => {
-    const generatedPieces: ConfettiPiece[] = Array.from({ length: 60 }, (_, i) => ({
+    // Generate confetti only on client side to avoid hydration mismatch
+    const generatedPieces = Array.from({ length: 60 }, (_, i) => ({
       id: i,
       left: `${Math.random() * 100}%`,
       delay: `${Math.random() * 3}s`,
@@ -236,7 +252,7 @@ const Confetti = () => {
 };
 
 // ─── STEP INDICATOR ───────────────────────────────────────────────
-const StepBar = ({ current, total }: { current: number; total: number }) => (
+const StepBar = ({ current, total }) => (
   <div style={{ display: "flex", gap: 6, marginBottom: 28 }}>
     {Array.from({ length: total }, (_, i) => (
       <div key={i} style={{
@@ -274,9 +290,8 @@ const FloatingParticles = () => {
 // ════════════════════════════════════════════════════════════════
 // PAGE: HOME
 // ════════════════════════════════════════════════════════════════
-const HomePage = ({ onNavigate }: { onNavigate: (page: string, data?: any) => void }) => {
+const HomePage = ({ onNavigate }) => {
   const [visible, setVisible] = useState(false);
-  
   useEffect(() => { 
     const timer = setTimeout(() => setVisible(true), 100);
     return () => clearTimeout(timer);
@@ -395,16 +410,16 @@ const HomePage = ({ onNavigate }: { onNavigate: (page: string, data?: any) => vo
 // ════════════════════════════════════════════════════════════════
 // PAGE: CREATE
 // ════════════════════════════════════════════════════════════════
-const CreatePage = ({ onNavigate }: { onNavigate: (page: string, data?: any) => void }) => {
+const CreatePage = ({ onNavigate }) => {
   const [step, setStep] = useState(1);
   const [form, setForm] = useState({ sender: "", receiver: "", message: "", image: null, imagePreview: null });
-  const [errors, setErrors] = useState<Record<string, string>>({});
-  const fileRef = useRef<HTMLInputElement>(null);
+  const [errors, setErrors] = useState({});
+  const fileRef = useRef();
 
-  const update = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }));
+  const update = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
-  const handleImage = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+  const handleImage = (e) => {
+    const file = e.target.files[0];
     if (!file) return;
     const reader = new FileReader();
     reader.onload = () => update("imagePreview", reader.result);
@@ -413,18 +428,18 @@ const CreatePage = ({ onNavigate }: { onNavigate: (page: string, data?: any) => 
   };
 
   const validateStep1 = () => {
-    const e: Record<string, string> = {};
+    const e = {};
     if (!form.sender.trim()) e.sender = "Required";
     if (!form.receiver.trim()) e.receiver = "Required";
     setErrors(e);
-    return Object.keys(e).length === 0;
+    return !Object.keys(e).length;
   };
 
   const validateStep2 = () => {
-    const e: Record<string, string> = {};
+    const e = {};
     if (!form.message.trim()) e.message = "Write a message";
     setErrors(e);
-    return Object.keys(e).length === 0;
+    return !Object.keys(e).length;
   };
 
   const handleNext = () => {
@@ -491,7 +506,7 @@ const CreatePage = ({ onNavigate }: { onNavigate: (page: string, data?: any) => 
 
               <div>
                 <label style={{ fontSize: 13, color: theme.muted, display: "block", marginBottom: 8 }}>Add a photo <span style={{ color: theme.muted, fontWeight: 300 }}>(optional)</span></label>
-                <div onClick={() => fileRef.current?.click()} style={{
+                <div onClick={() => fileRef.current.click()} style={{
                   border: `2px dashed ${theme.border}`,
                   borderRadius: 12,
                   padding: "clamp(16px, 4vw, 20px)",
@@ -527,50 +542,22 @@ const CreatePage = ({ onNavigate }: { onNavigate: (page: string, data?: any) => 
 // ════════════════════════════════════════════════════════════════
 // PAGE: PREVIEW
 // ════════════════════════════════════════════════════════════════
-const PreviewPage = ({ data, onNavigate }: { data?: any; onNavigate: (page: string, data?: any) => void }) => {
+const PreviewPage = ({ data, onNavigate }) => {
   const form = data?.form || { sender: "Hassan", receiver: "Sara", message: "Wishing you the most magical birthday! 🎂", imagePreview: null };
   const [copied, setCopied] = useState(false);
   const [visible, setVisible] = useState(false);
   const [fakeLink, setFakeLink] = useState("");
-  const [isMounted, setIsMounted] = useState(false);
   
-  useEffect(() => {
-    setIsMounted(true);
+  useEffect(() => { 
     const timer = setTimeout(() => setVisible(true), 100);
     setFakeLink(`bday.app/b/${Math.random().toString(36).slice(2, 8)}`);
     return () => clearTimeout(timer);
   }, []);
 
   const handleCopy = () => {
-    navigator.clipboard.writeText(fakeLink);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
-
-  if (!isMounted) {
-    return (
-      <div style={{
-        minHeight: "100vh",
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: "clamp(16px, 5vw, 24px)",
-        position: "relative",
-      }}>
-        <OrbBg orbs={[
-          { color: theme.gold, size: 300, top: "20%", left: "50%", opacity: 0.08 },
-          { color: theme.pink, size: 250, bottom: "10%", left: "-5%", opacity: 0.1 },
-        ]} />
-        <div style={{ maxWidth: 440, width: "100%", position: "relative", zIndex: 1 }}>
-          <div className="glass" style={{ padding: "clamp(20px, 5vw, 24px)", textAlign: "center" }}>
-            <div style={{ fontSize: "clamp(32px, 8vw, 40px)", marginBottom: 12 }}>🎁</div>
-            <div style={{ fontSize: 13, color: theme.muted }}>Loading your surprise...</div>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div style={{
@@ -673,7 +660,7 @@ const PreviewPage = ({ data, onNavigate }: { data?: any; onNavigate: (page: stri
 // ════════════════════════════════════════════════════════════════
 // PAGE: VIEW (THE MAGIC)
 // ════════════════════════════════════════════════════════════════
-const ViewPage = ({ data }: { data?: any }) => {
+const ViewPage = ({ data }) => {
   const form = data?.form || {
     sender: "Hassan",
     receiver: "Sara",
@@ -681,16 +668,16 @@ const ViewPage = ({ data }: { data?: any }) => {
     imagePreview: null,
   };
 
-  const [phase, setPhase] = useState<"intro" | "countdown" | "gift" | "reveal">("intro");
+  const [phase, setPhase] = useState("intro");
   const [count, setCount] = useState(3);
   const [giftOpen, setGiftOpen] = useState(false);
   const [showConfetti, setShowConfetti] = useState(false);
   const [typedMsg, setTypedMsg] = useState("");
   const [msgDone, setMsgDone] = useState(false);
-  const [isMounted, setIsMounted] = useState(false);
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    setIsMounted(true);
+    setMounted(true);
   }, []);
 
   useEffect(() => {
@@ -729,6 +716,8 @@ const ViewPage = ({ data }: { data?: any }) => {
     const timer = setTimeout(() => setPhase("reveal"), 1000);
     return () => clearTimeout(timer);
   };
+
+  const ConfettiComponent = mounted && showConfetti ? <Confetti /> : null;
 
   if (phase === "intro") return (
     <div style={{
@@ -821,7 +810,7 @@ const ViewPage = ({ data }: { data?: any }) => {
       alignItems: "center", justifyContent: "center", padding: "clamp(24px, 8vw, 32px) clamp(16px, 5vw, 24px)",
       position: "relative",
     }}>
-      {isMounted && showConfetti && <Confetti />}
+      {ConfettiComponent}
       <OrbBg orbs={[
         { color: theme.pink, size: 350, top: "-5%", right: "-5%", opacity: 0.12 },
         { color: theme.purple, size: 300, bottom: "5%", left: "-5%", opacity: 0.12 },
@@ -922,26 +911,26 @@ const ViewPage = ({ data }: { data?: any }) => {
 // APP SHELL — ROUTER
 // ════════════════════════════════════════════════════════════════
 export default function App() {
-  const [page, setPage] = useState<"home" | "create" | "preview" | "view">("home");
-  const [pageData, setPageData] = useState<any>(null);
+  const [page, setPage] = useState("home");
+  const [pageData, setPageData] = useState(null);
   const [transitioning, setTransitioning] = useState(false);
-  const [isMounted, setIsMounted] = useState(false);
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    setIsMounted(true);
+    setMounted(true);
   }, []);
 
-  const navigate = (to: string, data: any = null) => {
+  const navigate = (to, data = null) => {
     setTransitioning(true);
     setTimeout(() => {
-      setPage(to as any);
+      setPage(to);
       setPageData(data);
       setTransitioning(false);
       window.scrollTo(0, 0);
     }, 220);
   };
 
-  if (!isMounted) {
+  if (!mounted) {
     return (
       <div style={{ background: theme.bg, minHeight: "100vh" }}>
         <GlobalStyle />
