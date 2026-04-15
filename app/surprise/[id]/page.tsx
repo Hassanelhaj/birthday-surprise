@@ -2,7 +2,10 @@
 
 import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
+import { db } from "../../lib/firebase";
+import { ref, get } from "firebase/database";
 
+// ─── THEME (same as before) ───────────────────────────────────────
 const theme = {
   bg: "#080810", surface: "rgba(255,255,255,0.04)", border: "rgba(255,255,255,0.08)",
   pink: "#FF4D8D", purple: "#A855F7", gold: "#FFD166", text: "#F0EAF8", muted: "rgba(240,234,248,0.45)",
@@ -32,17 +35,6 @@ const GlobalStyle = () => {
   return <style dangerouslySetInnerHTML={{ __html: css }} />;
 };
 
-interface SurpriseData {
-  sender: string;
-  receiver: string;
-  message: string;
-  imagePreview: string | null;
-}
-
-interface ConfettiPiece {
-  id: number; left: string; delay: string; dur: string; color: string; size: number; shape: string;
-}
-
 const OrbBg = ({ orbs = [] }: { orbs?: any[] }) => (
   <>
     {orbs.map((o, i) => (
@@ -50,6 +42,10 @@ const OrbBg = ({ orbs = [] }: { orbs?: any[] }) => (
     ))}
   </>
 );
+
+interface ConfettiPiece {
+  id: number; left: string; delay: string; dur: string; color: string; size: number; shape: string;
+}
 
 const Confetti = () => {
   const [pieces, setPieces] = useState<ConfettiPiece[]>([]);
@@ -74,7 +70,7 @@ export default function SurprisePage() {
   const params = useParams();
   const id = params?.id as string;
 
-  const [form, setForm] = useState<SurpriseData | null>(null);
+  const [form, setForm] = useState<any>(null);
   const [notFound, setNotFound] = useState(false);
   const [phase, setPhase] = useState<"intro" | "countdown" | "gift" | "reveal">("intro");
   const [count, setCount] = useState(3);
@@ -83,12 +79,40 @@ export default function SurprisePage() {
   const [typedMsg, setTypedMsg] = useState("");
   const [msgDone, setMsgDone] = useState(false);
 
-  // ── Load data from localStorage ──
   useEffect(() => {
     if (!id) return;
-    const raw = localStorage.getItem(`surprise_${id}`);
-    if (!raw) { setNotFound(true); return; }
-    try { setForm(JSON.parse(raw)); } catch { setNotFound(true); }
+    const fetchSurprise = async () => {
+      try {
+        const snapshot = await get(ref(db, `surprises/${id}`));
+        if (snapshot.exists()) {
+          const data = snapshot.val();
+          setForm({
+            sender: data.sender,
+            receiver: data.receiver,
+            message: data.message,
+            imagePreview: data.imagePreview || null,
+          });
+        } else {
+          // Fallback to localStorage
+          const raw = localStorage.getItem(`surprise_${id}`);
+          if (raw) {
+            const data = JSON.parse(raw);
+            setForm({
+              sender: data.sender,
+              receiver: data.receiver,
+              message: data.message,
+              imagePreview: data.imagePreview || null,
+            });
+          } else {
+            setNotFound(true);
+          }
+        }
+      } catch (error) {
+        console.error("Error fetching surprise:", error);
+        setNotFound(true);
+      }
+    };
+    fetchSurprise();
   }, [id]);
 
   useEffect(() => {
@@ -116,23 +140,21 @@ export default function SurprisePage() {
     setTimeout(() => setPhase("reveal"), 1000);
   };
 
-  // ── Not found ──
   if (notFound) return (
     <div style={{ background: theme.bg, minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
-      <GlobalStyle />
+      <GlobalStyle /><div className="noise-overlay" />
       <div className="glass" style={{ padding: 32, textAlign: "center", maxWidth: 360 }}>
         <div style={{ fontSize: 48, marginBottom: 16 }}>😕</div>
         <h2 className="display" style={{ fontSize: 24, fontWeight: 700, marginBottom: 8 }}>Surprise not found</h2>
-        <p style={{ color: theme.muted, fontSize: 14, marginBottom: 24 }}>This link may have expired or doesn't exist. Surprises are stored in the browser that created them.</p>
+        <p style={{ color: theme.muted, fontSize: 14, marginBottom: 24 }}>This link may have expired or doesn't exist.</p>
         <a href="/" style={{ textDecoration: "none" }}><button className="btn-primary">Create your own 🎁</button></a>
       </div>
     </div>
   );
 
-  // ── Loading ──
   if (!form) return (
     <div style={{ background: theme.bg, minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
-      <GlobalStyle />
+      <GlobalStyle /><div className="noise-overlay" />
       <div style={{ textAlign: "center" }}>
         <div style={{ fontSize: 48, marginBottom: 12, animation: "float 2s ease-in-out infinite", display: "inline-block" }}>🎁</div>
         <p style={{ color: theme.muted, fontSize: 14 }}>Loading your surprise…</p>
@@ -140,7 +162,6 @@ export default function SurprisePage() {
     </div>
   );
 
-  // ── INTRO ──
   if (phase === "intro") return (
     <div style={{ background: theme.bg, minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "clamp(24px, 8vw, 32px)", position: "relative", textAlign: "center" }}>
       <GlobalStyle /><div className="noise-overlay" />
@@ -160,7 +181,6 @@ export default function SurprisePage() {
     </div>
   );
 
-  // ── COUNTDOWN ──
   if (phase === "countdown") return (
     <div style={{ background: theme.bg, minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", position: "relative", overflow: "hidden" }}>
       <GlobalStyle /><div className="noise-overlay" />
@@ -174,7 +194,6 @@ export default function SurprisePage() {
     </div>
   );
 
-  // ── GIFT ──
   if (phase === "gift") return (
     <div style={{ background: theme.bg, minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "clamp(24px, 8vw, 32px)", position: "relative", textAlign: "center" }}>
       <GlobalStyle /><div className="noise-overlay" />
@@ -189,7 +208,6 @@ export default function SurprisePage() {
     </div>
   );
 
-  // ── REVEAL ──
   return (
     <div style={{ background: theme.bg, minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "clamp(24px, 8vw, 32px) clamp(16px, 5vw, 24px)", position: "relative" }}>
       <GlobalStyle /><div className="noise-overlay" />

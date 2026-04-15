@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { db } from "./lib/firebase";
+import { ref, set } from "firebase/database";
 
 // ─── DESIGN TOKENS ───────────────────────────────────────────────
 const theme = {
@@ -274,7 +276,7 @@ const CreatePage = ({ onNavigate }: { onNavigate: (page: string, data?: any) => 
 };
 
 // ════════════════════════════════════════════════════════════════
-// PAGE: PREVIEW — saves to localStorage, generates real link
+// PAGE: PREVIEW — saves to Realtime Database, generates permanent link
 // ════════════════════════════════════════════════════════════════
 const PreviewPage = ({ data, onNavigate }: { data?: any; onNavigate: (page: string, data?: any) => void }) => {
   const form = data?.form || { sender: "Hassan", receiver: "Sara", message: "Wishing you the most magical birthday! 🎂", imagePreview: null };
@@ -282,40 +284,89 @@ const PreviewPage = ({ data, onNavigate }: { data?: any; onNavigate: (page: stri
   const [visible, setVisible] = useState(false);
   const [shareLink, setShareLink] = useState("");
   const [isMounted, setIsMounted] = useState(false);
+  const [isSaving, setIsSaving] = useState(true);
+  const [error, setError] = useState(false);
 
   useEffect(() => {
     setIsMounted(true);
     const timer = setTimeout(() => setVisible(true), 100);
 
-    // ── Generate a unique ID and save to localStorage ──
-    const id = Math.random().toString(36).slice(2, 10);
-    const payload = {
-      sender: form.sender,
-      receiver: form.receiver,
-      message: form.message,
-      imagePreview: form.imagePreview,
+    const saveToRealtime = async () => {
+      try {
+        // Generate a unique ID
+        const id = Math.random().toString(36).slice(2, 10);
+        // Save to Realtime Database
+        await set(ref(db, `surprises/${id}`), {
+          sender: form.sender,
+          receiver: form.receiver,
+          message: form.message,
+          imagePreview: form.imagePreview || null,
+          createdAt: new Date().toISOString(),
+        });
+        const generatedLink = `${window.location.origin}/surprise/${id}`;
+        setShareLink(generatedLink);
+        console.log("Saved to Realtime Database, link:", generatedLink);
+      } catch (err) {
+        console.error("Realtime Database save failed:", err);
+        setError(true);
+        // Fallback to localStorage
+        try {
+          const fallbackId = Math.random().toString(36).slice(2, 10);
+          const payload = {
+            sender: form.sender,
+            receiver: form.receiver,
+            message: form.message,
+            imagePreview: form.imagePreview,
+          };
+          localStorage.setItem(`surprise_${fallbackId}`, JSON.stringify(payload));
+          const fallbackLink = `${window.location.origin}/surprise/${fallbackId}`;
+          setShareLink(fallbackLink);
+          console.log("Saved to localStorage, link:", fallbackLink);
+        } catch (localError) {
+          console.error("Fallback save failed:", localError);
+          setShareLink("#");
+        }
+      } finally {
+        setIsSaving(false);
+      }
     };
-    localStorage.setItem(`surprise_${id}`, JSON.stringify(payload));
-    setShareLink(`${window.location.origin}/surprise/${id}`);
 
-    return () => clearTimeout(timer);
+    // Timeout to avoid infinite loading
+    const timeoutId = setTimeout(() => {
+      if (isSaving) {
+        console.warn("Save took too long, forcing exit");
+        setIsSaving(false);
+        setShareLink("#");
+        setError(true);
+      }
+    }, 10000);
+
+    saveToRealtime();
+    return () => {
+      clearTimeout(timer);
+      clearTimeout(timeoutId);
+    };
   }, []);
 
   const handleCopy = () => {
-    navigator.clipboard.writeText(shareLink);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    if (shareLink && shareLink !== "#") {
+      navigator.clipboard.writeText(shareLink);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
   };
 
-  if (!isMounted) return (
-    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
-      <OrbBg orbs={[{ color: theme.gold, size: 300, top: "20%", left: "50%", opacity: 0.08 }]} />
-      <div className="glass" style={{ padding: 24, textAlign: "center" }}>
-        <div style={{ fontSize: 40, marginBottom: 12 }}>🎁</div>
-        <div style={{ fontSize: 13, color: theme.muted }}>Loading your surprise...</div>
+  if (!isMounted || isSaving) {
+    return (
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <OrbBg orbs={[{ color: theme.gold, size: 300, top: "20%", left: "50%", opacity: 0.08 }]} />
+        <div className="glass" style={{ padding: 24, textAlign: "center" }}>
+          <div style={{ fontSize: 40, marginBottom: 12 }}>🎁</div>
+          <div style={{ fontSize: 13, color: theme.muted }}>Creating your surprise...</div>
+        </div>
       </div>
-    </div>
-  );
+    );
+  }
 
   return (
     <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "clamp(16px, 5vw, 24px)", position: "relative" }}>
@@ -327,7 +378,10 @@ const PreviewPage = ({ data, onNavigate }: { data?: any; onNavigate: (page: stri
         <button onClick={() => onNavigate("create")} style={{ background: "none", border: "none", color: theme.muted, cursor: "pointer", fontSize: 14, marginBottom: 24, display: "flex", alignItems: "center", gap: 6 }}>← Edit</button>
         <div style={{ opacity: visible ? 1 : 0, transform: visible ? "translateY(0)" : "translateY(20px)", transition: "all 0.5s ease" }}>
           <h2 className="display" style={{ fontSize: "clamp(24px, 6vw, 28px)", fontWeight: 700, marginBottom: 6 }}>Looking good! 🎉</h2>
-          <p style={{ color: theme.muted, fontSize: 14, marginBottom: 24 }}>Share this link with <strong style={{ color: theme.text }}>{form.receiver}</strong> — they'll see the full surprise when they open it.</p>
+          <p style={{ color: theme.muted, fontSize: 14, marginBottom: 24 }}>
+            Share this link with <strong style={{ color: theme.text }}>{form.receiver}</strong> — they'll see the full surprise when they open it.
+            {error && <span style={{ color: theme.gold, display: "block", marginTop: 8 }}>⚠️ Using local storage (link valid only on this device)</span>}
+          </p>
 
           <div className="glass" style={{ padding: "clamp(20px, 5vw, 24px)", marginBottom: 16, textAlign: "center" }}>
             <div style={{ fontSize: "clamp(32px, 8vw, 40px)", marginBottom: 12 }}>🎁</div>
@@ -338,12 +392,11 @@ const PreviewPage = ({ data, onNavigate }: { data?: any; onNavigate: (page: stri
             <div style={{ fontSize: 13, color: theme.muted }}>— from <span style={{ color: theme.text }}>{form.sender}</span></div>
           </div>
 
-          {/* ── Real shareable link ── */}
           <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
             <div style={{ flex: 1, minWidth: 0, background: "rgba(255,255,255,0.04)", border: `1px solid ${theme.border}`, borderRadius: 12, padding: "12px 16px", fontSize: "clamp(11px, 3vw, 13px)", color: theme.muted, fontFamily: "monospace", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {shareLink}
             </div>
-            <button className="btn-primary" style={{ padding: "12px 20px", fontSize: 13, whiteSpace: "nowrap" }} onClick={handleCopy}>
+            <button className="btn-primary" style={{ padding: "12px 20px", fontSize: 13, whiteSpace: "nowrap" }} onClick={handleCopy} disabled={shareLink === "#"}>
               {copied ? "✓ Copied!" : "Copy Link"}
             </button>
           </div>
